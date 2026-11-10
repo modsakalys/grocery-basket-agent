@@ -10,9 +10,10 @@ The app's configured destinations are [Barbora](https://barbora.lt), [Rimi e-par
 2. `parse_recipe_url` fetches HTML and extracts `recipeIngredient` from Schema.org JSON-LD. It does not execute page JavaScript or log in.
 3. Ingredient phrases are kept intact for review rather than being guessed into exact quantities.
 4. `load_product_catalog` validates package price/size and computes comparable price per kg, litre, or package unit.
-5. `compare_ingredients` uses conservative token overlap and returns the cheapest plausible match plus same-measure-family alternatives. Name similarity cannot guarantee culinary equivalence.
-6. The app creates an editable basket proposal. Users can change cells, add rows, and remove rows before downloading the reviewed basket as CSV.
-7. No retailer cart or checkout is submitted. The CSV and product links are used to shop manually.
+5. `merge_ingredient_entries` normalizes and merges duplicate items to reduce redundant entries.
+6. `compare_ingredients` uses conservative token overlap on normalized names and returns the cheapest plausible match plus same-measure-family alternatives.
+7. The app creates an editable basket proposal. Users can change cells, add rows, and remove rows before downloading the reviewed basket as CSV.
+8. No retailer cart or checkout is submitted. The CSV and product links are used to shop manually.
 
 ## Retailer data integration
 
