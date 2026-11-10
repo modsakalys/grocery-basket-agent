@@ -32,7 +32,12 @@ recipe_text = st.text_area("Recipe URLs (one per line; add as many as you like)"
 ingredient_file = st.file_uploader("Or upload an ingredient Excel/CSV sheet", type=["xlsx", "xls", "csv"], key="ingredients")
 manual_ingredients = st.text_area("Or type ingredients (one per line)", placeholder="tomatoes\npasta\nsalmon")
 
-st.header("2. Compare prices from your shops")
+st.header("2. Add shopping preferences")
+preferred_brands = st.text_area("Preferred brands (optional, one per line)", placeholder="Rimi\nKraft\nApetit")
+max_budget = st.number_input("Maximum basket budget in € (optional)", min_value=0.0, step=1.0, value=0.0)
+max_delivery = st.number_input("Maximum delivery fee in € (optional)", min_value=0.0, step=0.5, value=0.0)
+
+st.header("3. Compare prices from your shops")
 st.caption("Upload a current CSV/Excel product list. Required columns: store, product, price, quantity, unit. Stores: Barbora, Rimi, IKI.")
 catalog_file = st.file_uploader("Product catalog (CSV/XLSX)", type=["xlsx", "xls", "csv"], key="catalog")
 
@@ -75,7 +80,8 @@ if st.button("Find the cheapest prices", type="primary"):
     else:
         try:
             products = load_product_catalog(catalog_file.getvalue(), catalog_file.name)
-            result = compare_ingredients(ingredients, products)
+            preferred = [line.strip() for line in preferred_brands.splitlines() if line.strip()]
+            result = compare_ingredients(ingredients, products, preferred_brands=preferred)
             st.session_state["comparison"] = result
             st.session_state["basket_draft"] = pd.DataFrame([
                 {
@@ -90,11 +96,13 @@ if st.button("Find the cheapest prices", type="primary"):
                 for item in result
             ], columns=["Your ingredient", "Product", "Shop", "Pack size", "Pack price (€)", "Price per kg/litre/unit", "Product/shop link"])
             st.session_state["ingredient_count"] = len(ingredients)
+            st.session_state["budget_limit"] = float(max_budget)
+            st.session_state["delivery_limit"] = float(max_delivery)
         except Exception as exc:
             st.error(f"Could not build comparison: {exc}")
 
 if "basket_draft" in st.session_state:
-    st.header("3. Edit your basket")
+    st.header("4. Edit your basket")
     st.write("Change any cell, add rows using the blank row at the bottom, or remove rows with the row controls. For an item without a catalog match, add its product, shop, and price yourself.")
     edited_basket = st.data_editor(
         st.session_state["basket_draft"],
@@ -118,10 +126,20 @@ if "basket_draft" in st.session_state:
     export_basket["Pack price (€)"] = pd.to_numeric(export_basket["Pack price (€)"], errors="coerce")
     has_content = export_basket["Your ingredient"].fillna("").astype(str).str.strip().ne("") | export_basket["Product"].fillna("").astype(str).str.strip().ne("")
     export_basket = export_basket.loc[has_content].copy()
-    st.header("4. Review and export")
+    st.header("5. Review and export")
     total = export_basket["Pack price (€)"].sum(min_count=1)
     if pd.notna(total):
         st.metric("Total of entered pack prices (excludes delivery)", f"€{total:.2f}")
+        budget_limit = float(st.session_state.get("budget_limit", 0.0))
+        delivery_limit = float(st.session_state.get("delivery_limit", 0.0))
+        if budget_limit > 0:
+            if total > budget_limit:
+                st.warning(f"Selected basket is above your budget by €{total - budget_limit:.2f}. Consider removing items or choosing cheaper alternatives.")
+            else:
+                st.success(f"Selected basket is within your budget. You have €{budget_limit - total:.2f} remaining before delivery.")
+        if delivery_limit > 0 and budget_limit > 0:
+            if total + delivery_limit > budget_limit:
+                st.warning(f"Delivery fee plus basket total exceeds your budget by €{total + delivery_limit - budget_limit:.2f}.")
     st.warning("Prices come from the uploaded catalog or your edits—not live shop data. Verify products, availability, and delivery costs. This app does not add items to a retailer cart or place an order.")
     confirmed = st.checkbox("I have reviewed this basket and it meets my needs")
     if confirmed:
@@ -130,4 +148,4 @@ if "basket_draft" in st.session_state:
         st.success("Basket review recorded for this session. Use the product links to shop and place any order yourself.")
 
 st.divider()
-st.caption("Local-first prototype • Any recipe links or ingredients • Editable basket • Cheapest comparable catalog prices • No automatic checkout")
+st.caption("Local-first prototype • Any recipe links or ingredients • Editable basket • Budget-aware recommendations • No automatic checkout")

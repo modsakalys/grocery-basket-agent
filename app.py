@@ -78,7 +78,7 @@ def normalize_ingredient_name(value: str) -> str:
     if not base:
         return ""
     for canonical, aliases in _INGREDIENT_SYNONYMS.items():
-        variant_set = { _normalize_lithuanian_text(item) for item in aliases }
+        variant_set = {_normalize_lithuanian_text(item) for item in aliases}
         variant_set.add(canonical)
         if base in variant_set:
             return canonical
@@ -145,19 +145,16 @@ def merge_ingredient_entries(entries: list[dict[str, Any]]) -> list[dict[str, An
             if not existing.get("notes") and entry.get("notes"):
                 existing["notes"] = entry.get("notes")
         else:
-            # handle same-family conversion for weight and liquid units only
             if current_unit in {"g", "kg"} and incoming_unit in {"g", "kg"}:
                 current_g = float(existing_quantity) * 1000 if current_unit == "kg" else float(existing_quantity)
                 incoming_g = float(incoming_quantity) * 1000 if incoming_unit == "kg" else float(incoming_quantity)
-                existing["quantity"] = current_g / 1000
-                existing["unit"] = "kg"
                 existing["quantity"] = round((current_g + incoming_g) / 1000, 4)
+                existing["unit"] = "kg"
             elif current_unit in {"ml", "l"} and incoming_unit in {"ml", "l"}:
                 current_ml = float(existing_quantity) * 1000 if current_unit == "l" else float(existing_quantity)
                 incoming_ml = float(incoming_quantity) * 1000 if incoming_unit == "l" else float(incoming_quantity)
-                existing["quantity"] = current_ml / 1000
-                existing["unit"] = "l"
                 existing["quantity"] = round((current_ml + incoming_ml) / 1000, 4)
+                existing["unit"] = "l"
             elif existing.get("unit") is None:
                 existing["unit"] = incoming_unit
                 existing["quantity"] = incoming_quantity
@@ -268,6 +265,21 @@ def _tokens(text: str) -> set[str]:
     return {token for token in re.findall(r"[\w-]+", text.lower()) if len(token) > 1}
 
 
+def _brand_match_score(product_name: str, preferred_brands: list[str]) -> int:
+    if not preferred_brands:
+        return 1
+    product_norm = _normalize_lithuanian_text(product_name)
+    for brand in preferred_brands:
+        brand_norm = _normalize_lithuanian_text(brand)
+        if not brand_norm:
+            continue
+        if brand_norm in product_norm or product_norm in brand_norm:
+            return 2
+        if brand_norm.split() and all(part in product_norm.split() for part in brand_norm.split()):
+            return 2
+    return 0
+
+
 def _normalized_match_score(ingredient: str, product: str) -> float:
     left = normalize_ingredient_name(ingredient)
     right = normalize_ingredient_name(product)
@@ -285,13 +297,15 @@ def _normalized_match_score(ingredient: str, product: str) -> float:
     return len(overlap) / len(left_tokens | right_tokens)
 
 
-def compare_ingredients(ingredients: list[dict[str, Any]], products: list[CatalogProduct]) -> list[dict[str, Any]]:
+def compare_ingredients(ingredients: list[dict[str, Any]], products: list[CatalogProduct], preferred_brands: list[str] | None = None) -> list[dict[str, Any]]:
     """Return the cheapest plausible product match for each requested ingredient.
 
     Matching is smarter than raw string equality: it normalizes Lithuanian names and aliases,
-    then compares within the same comparable-unit family.
+    then compares within the same comparable-unit family. If preferred brands are specified,
+    they are used as a ranking preference, while still preserving the cheapest option logic.
     """
     output = []
+    preferred_lower = [_normalize_lithuanian_text(item) for item in (preferred_brands or []) if _normalize_lithuanian_text(item)]
     for entry in ingredients:
         ingredient = str(entry.get("ingredient", "")).strip()
         if not ingredient:
@@ -304,6 +318,14 @@ def compare_ingredients(ingredients: list[dict[str, Any]], products: list[Catalo
         best = None
         alternatives: list[CatalogProduct] = []
         if candidates:
+            if preferred_lower:
+                preferred_candidates = [
+                    (score, product)
+                    for score, product in candidates
+                    if _brand_match_score(product.product, preferred_lower) > 0
+                ]
+                if preferred_candidates:
+                    candidates = preferred_candidates
             best_family = max(candidates, key=lambda pair: pair[0])[1].comparable_unit
             family = [(score, product) for score, product in candidates if product.comparable_unit == best_family]
             alternatives = [product for _, product in sorted(family, key=lambda pair: (pair[1].comparable_price, -pair[0]))]
