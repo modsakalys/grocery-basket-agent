@@ -1,13 +1,13 @@
 # Grocery Basket Agent
 
-A local-first app for adding any recipe URLs, manually entered ingredients, or a flat Excel ingredient list. It finds the cheapest comparable product in your uploaded catalog from Barbora, Rimi, and IKI and prepares a reviewable basket suggestion.
+A local-first app for adding any recipe URLs, manually entered ingredients, or a flat Excel ingredient list. It finds the cheapest comparable product in your uploaded catalog from Barbora, Rimi, and IKI and prepares an editable basket suggestion.
 
 Supported shops:
 - [Barbora](https://barbora.lt)
 - [Rimi e-parduotuvė](https://www.rimi.lt/e-parduotuve)
 - [IKI via LastMile](https://www.lastmile.lt/chain/IKI)
 
-**Price data limitation:** the current version does not fetch live product listings or prices from the shops. Upload a current product catalog CSV/XLSX to compare. The app clearly compares only the catalog rows you provide; it does not claim those prices are live. It does not place orders or access account-only content.
+**Price data limitation:** the current version does not fetch live product listings or prices from the shops. Upload a current product catalog CSV/XLSX to compare. Prices are only as current as that catalog. It does not access account-only content, add items to retailer carts, or place orders.
 
 ## Run locally
 
@@ -28,10 +28,11 @@ Streamlit prints a local URL (usually http://localhost:8501).
 
 ## Use it
 
-1. Add as many recipe URLs as you like (one per line), type ingredients manually (one per line), upload an ingredient sheet, or combine those inputs.
+1. Add any number of recipe URLs (one per line), type ingredients manually (one per line), upload an ingredient sheet, or combine those inputs.
 2. Upload a current product catalog from the supported shops.
-3. Click **Find the cheapest prices**. For each ingredient, the app shows the lowest normalized-price matching product and expandable alternatives from the catalog.
-4. Review the suggested basket and confirm the review checkbox to download it. Confirmation does not place an order.
+3. Click **Find the cheapest prices**. The app suggests the lowest comparable price per kg, litre, or unit from matching catalog products.
+4. Edit the basket: change product details, add your own items in a new row, or remove rows. Add the shop and price for items you enter manually.
+5. Review and confirm the basket, then download it as CSV. Use product links to visit the shops and place any order yourself.
 
 ### Ingredient sheet
 
@@ -47,7 +48,7 @@ Use `examples/ingredients_template.csv` (Excel can open CSV), or upload `.xlsx`/
 
 Upload CSV or Excel with columns `store`, `product`, `price`, `quantity`, and `unit`. Optional columns: `url`, `notes`. Store values must be Barbora, Rimi, or IKI (also accepts `IKI LastMile` and `Rimi e-parduotuvė`). Units supported: `g`, `kg`, `ml`, `l`, and `unit`/`pcs`. The app calculates price per kg, litre, or item and compares only within a matching measure family.
 
-Example catalog: `examples/product_catalog_example.csv`. Prices are only as current as your catalog. Check package equivalence, stock, promotions, and delivery fees on the retailer site.
+Example catalog: `examples/product_catalog_example.csv`. Check package equivalence, stock, promotions, and delivery fees on the retailer site.
 
 ## Safety and privacy
 

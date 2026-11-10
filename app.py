@@ -15,7 +15,7 @@ from grocery_agent import (
 
 st.set_page_config(page_title="Grocery Basket Agent", page_icon="🛒", layout="wide")
 st.title("🛒 Grocery Basket Agent")
-st.caption("Choose any recipe links and/or enter ingredients. The app identifies the cheapest comparable catalog option and prepares a basket suggestion; it never places an order.")
+st.caption("Choose any recipe links and/or enter ingredients. The app identifies the cheapest comparable catalog option and prepares an editable basket suggestion; it never places an order.")
 st.markdown("**Supported shops:** " + " · ".join(f"[{store}]({url})" for store, url in STORE_URLS.items()))
 
 with st.expander("Price and data details", expanded=False):
@@ -75,51 +75,56 @@ if st.button("Find the cheapest prices", type="primary"):
             products = load_product_catalog(catalog_file.getvalue(), catalog_file.name)
             result = compare_ingredients(ingredients, products)
             st.session_state["comparison"] = result
-            st.session_state["ingredients"] = ingredients
+            st.session_state["basket_draft"] = pd.DataFrame([
+                {
+                    "Your ingredient": item["ingredient"],
+                    "Product": item["best_match"].product if item.get("best_match") else "",
+                    "Shop": item["best_match"].store if item.get("best_match") else "",
+                    "Pack size": f"{item['best_match'].quantity:g} {item['best_match'].unit}" if item.get("best_match") else "",
+                    "Pack price (€)": float(item["best_match"].price) if item.get("best_match") else None,
+                    "Price per kg/litre/unit": f"€{item['best_match'].comparable_price:.2f}/{item['best_match'].comparable_unit}" if item.get("best_match") else "",
+                    "Product/shop link": (item["best_match"].url or STORE_URLS.get(item["best_match"].store, "")) if item.get("best_match") else "",
+                }
+                for item in result
+            ], columns=["Your ingredient", "Product", "Shop", "Pack size", "Pack price (€)", "Price per kg/litre/unit", "Product/shop link"])
         except Exception as exc:
             st.error(f"Could not build comparison: {exc}")
 
-if "comparison" in st.session_state:
-    st.header("3. Cheapest matches — review before shopping")
-    results = st.session_state["comparison"]
-    if not results:
-        st.info("No ingredients to compare.")
-    else:
-        rows = []
-        for item in results:
-            product = item.get("best_match")
-            rows.append({
-                "Your ingredient": item["ingredient"],
-                "Cheapest matching product": product.product if product else "No likely match — review manually",
-                "Shop": product.store if product else "—",
-                "Pack size": f"{product.quantity:g} {product.unit}" if product else "—",
-                "Pack price": f"€{product.price:.2f}" if product else "—",
-                "Price per kg/litre/unit": f"€{product.comparable_price:.2f}/{product.comparable_unit}" if product else "—",
-                "Product/shop link": (product.url or STORE_URLS.get(product.store, "")) if product else "",
-            })
-            alternatives = item.get("alternatives", [])
-            if alternatives:
-                with st.expander(f"Compare {item['ingredient']} across shops ({len(alternatives)} candidate product(s))"):
-                    alternative_rows = [{
-                        "Shop": candidate.store,
-                        "Product": candidate.product,
-                        "Pack": f"{candidate.quantity:g} {candidate.unit}",
-                        "Pack price": f"€{candidate.price:.2f}",
-                        "Price per kg/litre/unit": f"€{candidate.comparable_price:.2f}/{candidate.comparable_unit}",
-                        "Link": candidate.url or STORE_URLS.get(candidate.store, ""),
-                    } for candidate in alternatives]
-                    st.dataframe(pd.DataFrame(alternative_rows), use_container_width=True, hide_index=True, column_config={"Link": st.column_config.LinkColumn()})
+if "basket_draft" in st.session_state:
+    st.header("3. Edit your basket")
+    st.write("Change any cell, add rows using the blank row at the bottom, or remove rows with the row controls. For an item without a catalog match, add its product, shop, and price yourself.")
+    edited_basket = st.data_editor(
+        st.session_state["basket_draft"],
+        key="editable_basket",
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Your ingredient": st.column_config.TextColumn("Your ingredient"),
+            "Product": st.column_config.TextColumn("Product"),
+            "Shop": st.column_config.TextColumn("Shop"),
+            "Pack size": st.column_config.TextColumn("Pack size"),
+            "Pack price (€)": st.column_config.NumberColumn("Pack price (€)", min_value=0.0, step=0.01, format="€%.2f"),
+            "Price per kg/litre/unit": st.column_config.TextColumn("Price per kg/litre/unit"),
+            "Product/shop link": st.column_config.LinkColumn("Product/shop link"),
+        },
+    )
+    st.session_state["basket_draft"] = edited_basket
 
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={"Product/shop link": st.column_config.LinkColumn()})
-        matched = [item["best_match"] for item in results if item.get("best_match")]
-        if matched:
-            st.metric("Total selected pack prices (excludes delivery)", f"€{sum(product.price for product in matched):.2f}")
-        st.warning("This is based only on the uploaded catalog, not live shop prices. Verify matches, availability, and delivery costs. No order has been placed.")
-        confirmed = st.checkbox("I have reviewed this basket and it meets my needs")
-        if confirmed:
-            output = pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig")
-            st.download_button("Download reviewed basket CSV", data=output, file_name="reviewed_grocery_basket.csv", mime="text/csv")
-            st.success("Review recorded for this session. No order has been placed.")
+    export_basket = edited_basket.copy()
+    export_basket["Pack price (€)"] = pd.to_numeric(export_basket["Pack price (€)"], errors="coerce")
+    has_content = export_basket["Your ingredient"].fillna("").astype(str).str.strip().ne("") | export_basket["Product"].fillna("").astype(str).str.strip().ne("")
+    export_basket = export_basket.loc[has_content].copy()
+    st.header("4. Review and export")
+    total = export_basket["Pack price (€)"].sum(min_count=1)
+    if pd.notna(total):
+        st.metric("Total of entered pack prices (excludes delivery)", f"€{total:.2f}")
+    st.warning("Prices come from the uploaded catalog or your edits—not live shop data. Verify products, availability, and delivery costs. This app does not add items to a retailer cart or place an order.")
+    confirmed = st.checkbox("I have reviewed this basket and it meets my needs")
+    if confirmed:
+        output = export_basket.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("Download my reviewed basket CSV", data=output, file_name="reviewed_grocery_basket.csv", mime="text/csv")
+        st.success("Basket review recorded for this session. Use the product links to shop and place any order yourself.")
 
 st.divider()
-st.caption("Local-first prototype • Any recipe links or ingredients • Cheapest comparable catalog prices • No automatic checkout")
+st.caption("Local-first prototype • Any recipe links or ingredients • Editable basket • Cheapest comparable catalog prices • No automatic checkout")

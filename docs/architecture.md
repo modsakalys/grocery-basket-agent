@@ -11,7 +11,8 @@ The app's configured destinations are [Barbora](https://barbora.lt), [Rimi e-par
 3. Ingredient phrases are kept intact for review rather than being guessed into exact quantities.
 4. `load_product_catalog` validates package price/size and computes comparable price per kg, litre, or package unit.
 5. `compare_ingredients` uses conservative token overlap and returns the cheapest plausible match plus same-measure-family alternatives. Name similarity cannot guarantee culinary equivalence.
-6. The app displays a basket proposal and can export a CSV only after the user checks the review box. No retailer cart or checkout is submitted.
+6. The app creates an editable basket proposal. Users can change cells, add rows, and remove rows before downloading the reviewed basket as CSV.
+7. No retailer cart or checkout is submitted. The CSV and product links are used to shop manually.
 
 ## Retailer data integration
 
