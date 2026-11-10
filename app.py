@@ -28,6 +28,21 @@ with st.expander("Price and data details", expanded=False):
         "delivery fees, promotions, and substitutions on the retailer site."
     )
 
+st.subheader("0. Browser sign-in (manual retailer login)")
+st.markdown(
+    "Use this mode if you want to finish the basket in the retailer browser. "
+    "Open a retailer website in a browser tab, sign in, then confirm below. "
+    "This app does not automate checkout or payment."
+)
+selected_store = st.selectbox("Choose a retailer to sign in to", list(STORE_URLS.keys()), index=0)
+store_url = STORE_URLS.get(selected_store, "")
+st.markdown(f"Open: [{selected_store}]({store_url})")
+login_confirmed = st.checkbox(f"I am signed in to {selected_store} in my browser and ready to continue")
+if login_confirmed:
+    st.success(f"Retailer sign-in confirmed for {selected_store}. You can continue with the basket comparison.")
+else:
+    st.info("Please sign in to the selected retailer in your browser and confirm below before continuing.")
+
 st.header("1. Add anything you want to buy")
 recipe_text = st.text_area("Recipe URLs (one per line; add as many as you like)", placeholder="https://example.com/recipe\nhttps://example.com/another-recipe")
 ingredient_file = st.file_uploader("Or upload an ingredient Excel/CSV sheet", type=["xlsx", "xls", "csv"], key="ingredients")
@@ -42,7 +57,7 @@ st.header("3. Compare prices from your shops")
 st.caption("Upload a current CSV/Excel product list. Required columns: store, product, price, quantity, unit. Stores: Barbora, Rimi, IKI.")
 catalog_file = st.file_uploader("Product catalog (CSV/XLSX)", type=["xlsx", "xls", "csv"], key="catalog")
 
-if st.button("Find the cheapest prices", type="primary"):
+if st.button("Find the cheapest prices", type="primary", disabled=not login_confirmed):
     ingredients: list[dict[str, Any]] = []
     errors: list[str] = []
 
@@ -101,6 +116,7 @@ if st.button("Find the cheapest prices", type="primary"):
             st.session_state["ingredient_count"] = len(ingredients)
             st.session_state["budget_limit"] = float(max_budget)
             st.session_state["delivery_limit"] = float(max_delivery)
+            st.session_state["browser_store"] = selected_store
         except Exception as exc:
             st.error(f"Could not build comparison: {exc}")
 
@@ -131,6 +147,7 @@ if "basket_draft" in st.session_state:
     export_basket = export_basket.loc[has_content].copy()
     st.header("5. Review and export")
     total = export_basket["Pack price (€)"].sum(min_count=1)
+    browser_store = st.session_state.get("browser_store", selected_store)
     if pd.notna(total):
         st.metric("Total of entered pack prices (excludes delivery)", f"€{total:.2f}")
         budget_limit = float(st.session_state.get("budget_limit", 0.0))
@@ -144,6 +161,7 @@ if "basket_draft" in st.session_state:
             if total + delivery_limit > budget_limit:
                 st.warning(f"Delivery fee plus basket total exceeds your budget by €{total + delivery_limit - budget_limit:.2f}.")
     st.warning("Prices come from the uploaded catalog or your edits—not live shop data. Verify products, availability, and delivery costs. This app does not add items to a retailer cart or place an order.")
+    st.info(f"Browser completion step: open {browser_store} in your browser, sign in, and finish the basket there. Once the basket is ready in the retailer checkout, use the product links to verify the items before ordering.")
     confirmed = st.checkbox("I have reviewed this basket and it meets my needs")
     if confirmed:
         output = export_basket.to_csv(index=False).encode("utf-8-sig")
