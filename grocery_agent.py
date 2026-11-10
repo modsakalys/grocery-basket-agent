@@ -4,6 +4,7 @@ import io
 import json
 import re
 from dataclasses import dataclass
+from itertools import product
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,7 +14,7 @@ from bs4 import BeautifulSoup
 
 MAX_PAGE_BYTES = 2_000_000
 REQUEST_TIMEOUT_SECONDS = 12
-ALLOWED_UNITS = {"g", "kg", "ml", "l", "unit", "units", "pc", "pcs", "piece", "pieces"}
+ALLOWED_UNITS = {"g", "kg", "ml", "l", "unit", "units", "pc", "pcs", "piece", "pieces", "vnt"}
 STORE_URLS = {
     "Barbora": "https://barbora.lt",
     "Rimi": "https://www.rimi.lt/e-parduotuve",
@@ -22,6 +23,29 @@ STORE_URLS = {
 _STORE_NAMES = {name.casefold(): name for name in STORE_URLS}
 _STORE_NAMES.update({"iki lastmile": "IKI", "lastmile/iki": "IKI", "rimi e-parduotuve": "Rimi"})
 
+_INGREDIENT_SYNONYMS = {
+    "tomato": {"tomato", "tomatoes", "pomidoras", "pomidorai", "pomidoro", "pomidoru", "pomidorui"},
+    "onion": {"onion", "onions", "svogunas", "svogunai", "svoguno", "svogunu", "svogunui"},
+    "garlic": {"garlic", "garlics", "cesnakas", "cesnako", "cesnakinis", "cesnakai"},
+    "milk": {"milk", "milkshake", "pienas", "pieno", "pienui", "pienas"},
+    "butter": {"butter", "butterblock", "sviestas", "sviesto", "sviestui"},
+    "bread": {"bread", "breads", "duona", "duonos", "duonai"},
+    "egg": {"egg", "eggs", "kiaušinis", "kiaušiniai", "kiaušinio", "kiaušiniui"},
+    "salmon": {"salmon", "salmonfish", "lašiša", "lašišos", "lašišai", "lašišą"},
+    "pasta": {"pasta", "macaronai", "makaronai", "makaronų", "makaronui", "makaronas"},
+    "pepper": {"pepper", "peppers", "pipirai", "pipiras", "pipiro", "paprika"},
+    "potato": {"potato", "potatoes", "bulvė", "bulvės", "bulvėms", "bulvėmis", "bulve"},
+    "carrot": {"carrot", "carrots", "morka", "morkos", "morkai", "morkos"},
+    "cucumber": {"cucumber", "cucumbers", "agurkas", "agurkai", "agurko", "agurkui"},
+    "chicken": {"chicken", "chickens", "vištiena", "vištienos", "vištienai"},
+    "beef": {"beef", "veal", "juniena", "junienos", "junienai"},
+    "apple": {"apple", "apples", "obuolys", "obuoliai", "obuolio"},
+    "banana": {"banana", "bananas", "bananas", "bananai", "banano"},
+    "lemon": {"lemon", "lemons", "citrina", "citrinos", "citrinai"},
+    "parsley": {"parsley", "petražolės", "petražole", "petražolė"},
+    "spinach": {"spinach", "spenat", "spenatas", "spenato", "shpinat"},
+}
+
 
 def _normalize_store(value: Any) -> str:
     raw = str(value).strip()
@@ -29,6 +53,122 @@ def _normalize_store(value: Any) -> str:
     if not canonical:
         raise ValueError(f"Unsupported store '{raw}'. Use one of: {', '.join(STORE_URLS)}.")
     return canonical
+
+
+def _normalize_lithuanian_text(value: str) -> str:
+    text = str(value).lower().strip()
+    mapping = {
+        "ą": "a",
+        "č": "c",
+        "ę": "e",
+        "ė": "e",
+        "į": "i",
+        "š": "s",
+        "ų": "u",
+        "ū": "u",
+        "ž": "z",
+    }
+    for old, new in mapping.items():
+        text = text.replace(old, new)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+
+def normalize_ingredient_name(value: str) -> str:
+    base = _normalize_lithuanian_text(value)
+    if not base:
+        return ""
+    for canonical, aliases in _INGREDIENT_SYNONYMS.items():
+        variant_set = {_normalize_lithuanian_text(item) for item in aliases}
+        variant_set.add(canonical)
+        if base in variant_set:
+            return canonical
+    return base
+
+
+def canonicalize_unit(value: Any) -> str:
+    unit = str(value).strip().lower()
+    aliases = {
+        "kg": "kg",
+        "kilogram": "kg",
+        "kilogramas": "kg",
+        "kilo": "kg",
+        "g": "g",
+        "gr": "g",
+        "gram": "g",
+        "gramas": "g",
+        "grams": "g",
+        "l": "l",
+        "liter": "l",
+        "litras": "l",
+        "ml": "ml",
+        "milliliter": "ml",
+        "millilitras": "ml",
+        "vnt": "unit",
+        "pcs": "unit",
+        "pc": "unit",
+        "piece": "unit",
+        "pieces": "unit",
+        "unit": "unit",
+        "units": "unit",
+    }
+    return aliases.get(unit, unit)
+
+
+def merge_ingredient_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        ingredient = str(entry.get("ingredient", "")).strip()
+        if not ingredient:
+            continue
+        key = normalize_ingredient_name(ingredient)
+        if key not in merged:
+            merged[key] = {
+                "ingredient": ingredient,
+                "quantity": entry.get("quantity"),
+                "unit": canonicalize_unit(entry.get("unit")) if entry.get("unit") is not None else None,
+                "notes": entry.get("notes", "") or "",
+            }
+            continue
+
+        existing = merged[key]
+        incoming_quantity = entry.get("quantity")
+        existing_quantity = existing.get("quantity")
+        if incoming_quantity is None or existing_quantity is None:
+            if incoming_quantity is not None and existing_quantity is None:
+                existing["quantity"] = incoming_quantity
+            continue
+
+        current_unit = canonicalize_unit(existing.get("unit")) if existing.get("unit") is not None else None
+        incoming_unit = canonicalize_unit(entry.get("unit")) if entry.get("unit") is not None else None
+        if current_unit == incoming_unit:
+            existing["quantity"] = float(existing_quantity) + float(incoming_quantity)
+            if not existing.get("notes") and entry.get("notes"):
+                existing["notes"] = entry.get("notes")
+        else:
+            if current_unit in {"g", "kg"} and incoming_unit in {"g", "kg"}:
+                current_g = float(existing_quantity) * 1000 if current_unit == "kg" else float(existing_quantity)
+                incoming_g = float(incoming_quantity) * 1000 if incoming_unit == "kg" else float(incoming_quantity)
+                existing["quantity"] = round((current_g + incoming_g) / 1000, 4)
+                existing["unit"] = "kg"
+            elif current_unit in {"ml", "l"} and incoming_unit in {"ml", "l"}:
+                current_ml = float(existing_quantity) * 1000 if current_unit == "l" else float(existing_quantity)
+                incoming_ml = float(incoming_quantity) * 1000 if incoming_unit == "l" else float(incoming_quantity)
+                existing["quantity"] = round((current_ml + incoming_ml) / 1000, 4)
+                existing["unit"] = "l"
+            elif existing.get("unit") is None:
+                existing["unit"] = incoming_unit
+                existing["quantity"] = incoming_quantity
+            if not existing.get("notes") and entry.get("notes"):
+                existing["notes"] = entry.get("notes")
+
+    cleaned = []
+    for item in merged.values():
+        if item.get("quantity") is not None and item.get("unit") is None:
+            item["unit"] = "unit"
+        item["ingredient"] = item["ingredient"].strip()
+        cleaned.append(item)
+    return cleaned
 
 
 @dataclass(frozen=True)
@@ -62,7 +202,7 @@ def load_ingredient_sheet(data: bytes, filename: str) -> list[dict[str, Any]]:
         if column not in frame.columns:
             frame[column] = None
     frame = frame.dropna(subset=["ingredient"])
-    return [
+    values = [
         {
             "ingredient": str(row["ingredient"]).strip(),
             "quantity": None if pd.isna(row["quantity"]) else row["quantity"],
@@ -72,10 +212,11 @@ def load_ingredient_sheet(data: bytes, filename: str) -> list[dict[str, Any]]:
         for _, row in frame.iterrows()
         if str(row["ingredient"]).strip()
     ]
+    return merge_ingredient_entries(values)
 
 
 def _comparable(price: float, quantity: float, unit: str) -> tuple[float, str]:
-    unit = unit.strip().lower()
+    unit = canonicalize_unit(unit)
     if unit not in ALLOWED_UNITS:
         raise ValueError(f"Unsupported catalog unit '{unit}'. Use g, kg, ml, l, or unit/pcs.")
     if unit in {"g", "kg"}:
@@ -103,7 +244,7 @@ def load_product_catalog(data: bytes, filename: str) -> list[CatalogProduct]:
             price, quantity = float(row["price"]), float(row["quantity"])
             if price < 0 or quantity <= 0:
                 raise ValueError("price must be non-negative and quantity must be positive")
-            unit = str(row["unit"]).strip().lower()
+            unit = canonicalize_unit(row["unit"])
             normalized_price, normalized_unit = _comparable(price, quantity, unit)
             products.append(CatalogProduct(
                 store=_normalize_store(row["store"]),
@@ -125,43 +266,150 @@ def _tokens(text: str) -> set[str]:
     return {token for token in re.findall(r"[\w-]+", text.lower()) if len(token) > 1}
 
 
-def _match_score(ingredient: str, product: str) -> float:
-    left, right = _tokens(ingredient), _tokens(product)
+def _brand_match_score(product_name: str, preferred_brands: list[str]) -> int:
+    if not preferred_brands:
+        return 1
+    product_norm = _normalize_lithuanian_text(product_name)
+    for brand in preferred_brands:
+        brand_norm = _normalize_lithuanian_text(brand)
+        if not brand_norm:
+            continue
+        if brand_norm in product_norm or product_norm in brand_norm:
+            return 2
+        if brand_norm.split() and all(part in product_norm.split() for part in brand_norm.split()):
+            return 2
+    return 0
+
+
+def _normalized_match_score(ingredient: str, product: str) -> float:
+    left = normalize_ingredient_name(ingredient)
+    right = normalize_ingredient_name(product)
     if not left or not right:
-        return 0
-    overlap = left & right
-    return len(overlap) / len(left | right)
+        return 0.0
+    if left == right:
+        return 1.0
+    if left in right or right in left:
+        return 0.9
+    left_tokens = set(_tokens(left))
+    right_tokens = set(_tokens(right))
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = left_tokens & right_tokens
+    return len(overlap) / len(left_tokens | right_tokens)
 
 
-def compare_ingredients(ingredients: list[dict[str, Any]], products: list[CatalogProduct]) -> list[dict[str, Any]]:
-    """Find the cheapest plausible product per ingredient in a comparable unit family.
+def compare_ingredients(ingredients: list[dict[str, Any]], products: list[CatalogProduct], preferred_brands: list[str] | None = None) -> list[dict[str, Any]]:
+    """Return the cheapest plausible product match for each requested ingredient.
 
-    Product-name matching is conservative token overlap. Alternatives are restricted to the
-    strongest comparable measure family so that €/kg is never compared directly with €/unit.
-    Review suggestions because name similarity cannot guarantee culinary equivalence.
+    Matching is smarter than raw string equality: it normalizes Lithuanian names and aliases,
+    then compares within the same comparable-unit family. If preferred brands are specified,
+    they are used as a ranking preference, while still preserving the cheapest option logic.
     """
     output = []
+    preferred_lower = [_normalize_lithuanian_text(item) for item in (preferred_brands or []) if _normalize_lithuanian_text(item)]
     for entry in ingredients:
         ingredient = str(entry.get("ingredient", "")).strip()
-        candidates = [
-            (score, product)
-            for product in products
-            if (score := _match_score(ingredient, product.product)) >= 0.25
-        ]
+        if not ingredient:
+            continue
+        candidates: list[tuple[float, CatalogProduct]] = []
+        for product in products:
+            score = _normalized_match_score(ingredient, product.product)
+            if score >= 0.25:
+                candidates.append((score, product))
         best = None
         alternatives: list[CatalogProduct] = []
         if candidates:
-            # Select the measure family with the strongest name match. Compare all shops' items
-            # within that family, ranking by normalized unit price, then match quality.
-            family_quality: dict[str, float] = {}
-            for score, product in candidates:
-                family_quality[product.comparable_unit] = max(family_quality.get(product.comparable_unit, 0), score)
-            selected_family = max(family_quality, key=family_quality.get)
-            family = [(score, product) for score, product in candidates if product.comparable_unit == selected_family]
+            if preferred_lower:
+                preferred_candidates = [
+                    (score, product)
+                    for score, product in candidates
+                    if _brand_match_score(product.product, preferred_lower) > 0
+                ]
+                if preferred_candidates:
+                    candidates = preferred_candidates
+            best_family = max(candidates, key=lambda pair: pair[0])[1].comparable_unit
+            family = [(score, product) for score, product in candidates if product.comparable_unit == best_family]
             alternatives = [product for _, product in sorted(family, key=lambda pair: (pair[1].comparable_price, -pair[0]))]
             best = alternatives[0]
         output.append({"ingredient": ingredient, "best_match": best, "alternatives": alternatives})
     return output
+
+
+def optimize_basket(results: list[dict[str, Any]], budget_limit: float | None = None, delivery_limit: float | None = None) -> list[dict[str, Any]]:
+    """Pick the cheapest valid whole-basket combination when multiple alternatives exist.
+
+    If a budget cap is set, we choose the cheapest combination that stays under the cap.
+    If no combination fits, we fall back to the cheapest item choice for each ingredient.
+    """
+    if not results:
+        return []
+
+    ingredient_choices: list[list[CatalogProduct]] = []
+    for item in results:
+        best = item.get("best_match")
+        alternatives = list(item.get("alternatives", []) or [])
+        if best is not None:
+            alternatives = [best] + [product for product in alternatives if product != best]
+        unique: list[CatalogProduct] = []
+        seen: set[tuple[str, str, float, str, str]] = set()
+        for product in alternatives:
+            key = (product.store, product.product, product.price, product.unit, product.url)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(product)
+        if not unique:
+            if best is not None:
+                unique = [best]
+        ingredient_choices.append(unique)
+
+    max_product_count = 1
+    for values in ingredient_choices:
+        max_product_count *= max(1, len(values))
+    if max_product_count > 200000:
+        return [
+            {
+                "ingredient": item["ingredient"],
+                "selected": item["best_match"],
+            }
+            for item in results
+        ]
+
+    valid_bests: list[tuple[float, list[CatalogProduct]]] = []
+    for combo in product(*ingredient_choices):
+        filtered = [product for product in combo if product is not None]
+        if not filtered:
+            continue
+        if budget_limit is not None and budget_limit > 0:
+            total = sum(product.price for product in filtered)
+            if total > budget_limit:
+                continue
+        valid_bests.append((sum(product.price for product in filtered), list(filtered)))
+
+    if valid_bests:
+        chosen = min(valid_bests, key=lambda x: (x[0], len(x[1])))
+        selected = chosen[1]
+    else:
+        selected = []
+        for item in results:
+            if item.get("best_match") is not None:
+                selected.append(item["best_match"])
+
+    payload = []
+    selected_map = {(product.store, product.product, product.price, product.unit): product for product in selected}
+    for item in results:
+        ingredient = item["ingredient"]
+        chosen_product = None
+        for product in selected:
+            if product.product == item.get("best_match").product if item.get("best_match") is not None else False:
+                chosen_product = product
+                break
+        if chosen_product is None and item.get("best_match") is not None:
+            chosen_product = item["best_match"]
+        if chosen_product is None:
+            chosen_product = item.get("best_match")
+        payload.append({"ingredient": ingredient, "selected": chosen_product})
+    return payload
 
 
 def _recipe_objects(value: Any) -> list[dict[str, Any]]:
@@ -213,3 +461,16 @@ def parse_recipe_url(url: str) -> tuple[str, list[str]]:
                 name = recipe.get("name", "")
                 return (str(name), ingredients)
     raise ValueError("No readable Schema.org recipe ingredients found. Add ingredients to the Excel sheet instead.")
+
+
+__all__ = [
+    "CatalogProduct",
+    "STORE_URLS",
+    "compare_ingredients",
+    "load_ingredient_sheet",
+    "load_product_catalog",
+    "merge_ingredient_entries",
+    "optimize_basket",
+    "normalize_ingredient_name",
+    "parse_recipe_url",
+]
