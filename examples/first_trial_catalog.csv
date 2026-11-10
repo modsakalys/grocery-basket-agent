@@ -1,0 +1,10 @@
+store,product,price,quantity,unit,url,notes
+Barbora,Milk 2.5% 1 L,1.59,1,l,https://barbora.lt,DEMO ONLY - invented price for testing the app; not a current quote
+Rimi,Milk 2.5% 1 L,1.49,1,l,https://www.rimi.lt/e-parduotuve,DEMO ONLY - invented price for testing the app; not a current quote
+IKI,Milk 2.5% 1 L,1.55,1,l,https://www.lastmile.lt/chain/IKI,DEMO ONLY - invented price for testing the app; not a current quote
+Barbora,Tomatoes 500 g,1.39,500,g,https://barbora.lt,DEMO ONLY - invented price for testing the app; not a current quote
+Rimi,Tomatoes 500 g,1.29,500,g,https://www.rimi.lt/e-parduotuve,DEMO ONLY - invented price for testing the app; not a current quote
+IKI,Tomatoes 500 g,1.35,500,g,https://www.lastmile.lt/chain/IKI,DEMO ONLY - invented price for testing the app; not a current quote
+Barbora,Bread loaf 500 g,1.79,500,g,https://barbora.lt,DEMO ONLY - invented price for testing the app; not a current quote
+Rimi,Bread loaf 500 g,1.59,500,g,https://www.rimi.lt/e-parduotuve,DEMO ONLY - invented price for testing the app; not a current quote
+IKI,Bread loaf 500 g,1.69,500,g,https://www.lastmile.lt/chain/IKI,DEMO ONLY - invented price for testing the app; not a current quote
