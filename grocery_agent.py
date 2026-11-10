@@ -27,8 +27,7 @@ def _normalize_store(value: Any) -> str:
     raw = str(value).strip()
     canonical = _STORE_NAMES.get(raw.casefold())
     if not canonical:
-        supported = ", ".join(STORE_URLS)
-        raise ValueError(f"Unsupported store '{raw}'. Use one of: {supported}.")
+        raise ValueError(f"Unsupported store '{raw}'. Use one of: {', '.join(STORE_URLS)}.")
     return canonical
 
 
@@ -135,25 +134,33 @@ def _match_score(ingredient: str, product: str) -> float:
 
 
 def compare_ingredients(ingredients: list[dict[str, Any]], products: list[CatalogProduct]) -> list[dict[str, Any]]:
-    """Return the lowest normalized-price plausible name match for each requested ingredient.
+    """Find the cheapest plausible product per ingredient in a comparable unit family.
 
-    Comparisons are only made within the same normalized measure family (kg, litre, or package unit).
-    This conservative token-based matcher intentionally surfaces uncertain matches for human review.
+    Product-name matching is conservative token overlap. Alternatives are restricted to the
+    strongest comparable measure family so that €/kg is never compared directly with €/unit.
+    Review suggestions because name similarity cannot guarantee culinary equivalence.
     """
     output = []
     for entry in ingredients:
         ingredient = str(entry.get("ingredient", "")).strip()
-        candidates: list[tuple[float, CatalogProduct]] = []
-        for product in products:
-            score = _match_score(ingredient, product.product)
-            if score >= 0.25:
-                candidates.append((score, product))
+        candidates = [
+            (score, product)
+            for product in products
+            if (score := _match_score(ingredient, product.product)) >= 0.25
+        ]
         best = None
+        alternatives: list[CatalogProduct] = []
         if candidates:
-            best_family = max(candidates, key=lambda pair: pair[0])[1].comparable_unit
-            family = [(score, product) for score, product in candidates if product.comparable_unit == best_family]
-            best = min(family, key=lambda pair: (pair[1].comparable_price, -pair[0]))[1]
-        output.append({"ingredient": ingredient, "best_match": best, "alternatives": [p for _, p in candidates]})
+            # Select the measure family with the strongest name match. Compare all shops' items
+            # within that family, ranking by normalized unit price, then match quality.
+            family_quality: dict[str, float] = {}
+            for score, product in candidates:
+                family_quality[product.comparable_unit] = max(family_quality.get(product.comparable_unit, 0), score)
+            selected_family = max(family_quality, key=family_quality.get)
+            family = [(score, product) for score, product in candidates if product.comparable_unit == selected_family]
+            alternatives = [product for _, product in sorted(family, key=lambda pair: (pair[1].comparable_price, -pair[0]))]
+            best = alternatives[0]
+        output.append({"ingredient": ingredient, "best_match": best, "alternatives": alternatives})
     return output
 
 

@@ -1,15 +1,13 @@
 # Grocery Basket Agent
 
-A local-first MVP for turning recipe links or a flat Excel ingredient list into a consolidated shopping list, comparing a product catalog from **Barbora, Rimi, and IKI** by normalized price per kg/litre/unit, and preparing a basket for your review.
+A local-first app for adding any recipe URLs, manually entered ingredients, or a flat Excel ingredient list. It finds the cheapest comparable product in your uploaded catalog from Barbora, Rimi, and IKI and prepares a reviewable basket suggestion.
 
-Supported shopping destinations:
+Supported shops:
 - [Barbora](https://barbora.lt)
 - [Rimi e-parduotuvė](https://www.rimi.lt/e-parduotuve)
 - [IKI via LastMile](https://www.lastmile.lt/chain/IKI)
 
-**Important limitation:** this MVP does not yet read live product listings or prices from those websites. You provide a current product catalog export (CSV/XLSX) from those shops or prepare one yourself using data you are permitted to use. It compares only the catalog rows you provide; it does not pretend those prices are live. Retailer websites can change or restrict automated access, so live integrations should use supported/authorized data sources.
-
-**It does not place orders or access account-only content.** The app stops at a review/export step and never submits a checkout.
+**Price data limitation:** the current version does not fetch live product listings or prices from the shops. Upload a current product catalog CSV/XLSX to compare. The app clearly compares only the catalog rows you provide; it does not claim those prices are live. It does not place orders or access account-only content.
 
 ## Run locally
 
@@ -26,33 +24,37 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Streamlit prints a local URL (usually http://localhost:8501). The app runs on your computer; recipe pages are fetched when you submit their URLs.
+Streamlit prints a local URL (usually http://localhost:8501).
 
-## Inputs
+## Use it
 
-### Recipe links
-Paste one URL per line. The parser looks for Schema.org `Recipe` structured data (`recipeIngredient`) in public page HTML. If a site does not provide readable structured data, add those ingredients using the Excel template instead.
+1. Add as many recipe URLs as you like (one per line), type ingredients manually (one per line), upload an ingredient sheet, or combine those inputs.
+2. Upload a current product catalog from the supported shops.
+3. Click **Find the cheapest prices**. For each ingredient, the app shows the lowest normalized-price matching product and expandable alternatives from the catalog.
+4. Review the suggested basket and confirm the review checkbox to download it. Confirmation does not place an order.
 
-### Excel ingredient sheet
-Use the included [`examples/ingredients_template.csv`](examples/ingredients_template.csv) (Excel can open CSV), or upload `.xlsx`/`.xls` with these columns:
+### Ingredient sheet
+
+Use `examples/ingredients_template.csv` (Excel can open CSV), or upload `.xlsx`/`.xls` with columns:
 
 | ingredient | quantity | unit | notes |
 |---|---:|---|---|
 | tomatoes | 500 | g | fresh |
 
-`ingredient` is required; quantity, unit, and notes are optional. Recipe ingredient text is retained as written, since interpreting culinary quantities and conversions can require human judgment.
+`ingredient` is required; quantity, unit, and notes are optional. Recipe ingredient phrases remain intact for review rather than being guessed into exact quantities.
 
 ### Product catalog
-Upload a CSV or Excel file with columns `store`, `product`, `price`, `quantity`, and `unit`. Optional columns: `url`, `notes`. Store values must be Barbora, Rimi, or IKI (the app also accepts `IKI LastMile` and `Rimi e-parduotuvė`). `quantity` is the package quantity and `unit` is `g`, `kg`, `ml`, `l`, or `unit`/`pcs`. The app calculates price per kg, litre, or package unit as appropriate and chooses the lowest comparable price among likely name matches. If a product URL is not supplied, the result links to the relevant shop home page.
 
-The catalog is only as current as the file you provide. Check product size, availability, delivery charges, promotions, and substitutions on the retailer site before ordering.
+Upload CSV or Excel with columns `store`, `product`, `price`, `quantity`, and `unit`. Optional columns: `url`, `notes`. Store values must be Barbora, Rimi, or IKI (also accepts `IKI LastMile` and `Rimi e-parduotuvė`). Units supported: `g`, `kg`, `ml`, `l`, and `unit`/`pcs`. The app calculates price per kg, litre, or item and compares only within a matching measure family.
+
+Example catalog: `examples/product_catalog_example.csv`. Prices are only as current as your catalog. Check package equivalence, stock, promotions, and delivery fees on the retailer site.
 
 ## Safety and privacy
 
-- Basket creation is a recommendation only. There is no checkout or payment automation.
+- Basket creation is a recommendation only; no checkout or payment automation.
 - Recipe URLs are fetched with a timeout and response-size limit; only HTTP(S) URLs are accepted.
 - Uploaded files are processed in memory by the local app and are not intentionally sent to a hosted service.
-- Review ingredient interpretations and the final basket before shopping.
+- Review recipe extraction and product matches before shopping.
 
 ## Development
 
@@ -60,4 +62,4 @@ The catalog is only as current as the file you provide. Check product size, avai
 pytest
 ```
 
-See `docs/architecture.md` for the data model and integration notes.
+See `docs/architecture.md` for integration notes.
