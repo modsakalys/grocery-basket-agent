@@ -1,8 +1,15 @@
 # Grocery Basket Agent
 
-A local-first MVP for turning recipe links or a flat Excel ingredient list into a consolidated shopping list, comparing a product catalog from Barbora, Rimi, and IKI by normalized price per kg/litre/unit, and preparing a basket for your review.
+A local-first MVP for turning recipe links or a flat Excel ingredient list into a consolidated shopping list, comparing a product catalog from **Barbora, Rimi, and IKI** by normalized price per kg/litre/unit, and preparing a basket for your review.
 
-**It does not place orders or access account-only content.** The app stops at a review/export step and never submits a checkout. Retailer websites can change or restrict automated access, so this version uses a user-provided product catalog (CSV/XLSX, such as a catalog or price list you are permitted to download). The comparison engine and retailer-adapter interface are ready to extend when permitted data sources are available.
+Supported shopping destinations:
+- [Barbora](https://barbora.lt)
+- [Rimi e-parduotuvė](https://www.rimi.lt/e-parduotuve)
+- [IKI via LastMile](https://www.lastmile.lt/chain/IKI)
+
+**Important limitation:** this MVP does not yet read live product listings or prices from those websites. You provide a current product catalog export (CSV/XLSX) from those shops or prepare one yourself using data you are permitted to use. It compares only the catalog rows you provide; it does not pretend those prices are live. Retailer websites can change or restrict automated access, so live integrations should use supported/authorized data sources.
+
+**It does not place orders or access account-only content.** The app stops at a review/export step and never submits a checkout.
 
 ## Run locally
 
@@ -14,7 +21,7 @@ cd grocery-basket-agent
 python -m venv .venv
 # macOS/Linux
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -36,7 +43,7 @@ Use the included [`examples/ingredients_template.csv`](examples/ingredients_temp
 `ingredient` is required; quantity, unit, and notes are optional. Recipe ingredient text is retained as written, since interpreting culinary quantities and conversions can require human judgment.
 
 ### Product catalog
-Upload a CSV or Excel file with columns `store`, `product`, `price`, `quantity`, and `unit`. Optional columns: `url`, `notes`. Store values can be Barbora, Rimi, or IKI. `quantity` is the package quantity and `unit` is `g`, `kg`, `ml`, `l`, or `unit`/`pcs`. The app calculates price per kg, litre, or package unit as appropriate and chooses the lowest comparable price among likely name matches.
+Upload a CSV or Excel file with columns `store`, `product`, `price`, `quantity`, and `unit`. Optional columns: `url`, `notes`. Store values must be Barbora, Rimi, or IKI (the app also accepts `IKI LastMile` and `Rimi e-parduotuvė`). `quantity` is the package quantity and `unit` is `g`, `kg`, `ml`, `l`, or `unit`/`pcs`. The app calculates price per kg, litre, or package unit as appropriate and chooses the lowest comparable price among likely name matches. If a product URL is not supplied, the result links to the relevant shop home page.
 
 The catalog is only as current as the file you provide. Check product size, availability, delivery charges, promotions, and substitutions on the retailer site before ordering.
 

@@ -14,6 +14,22 @@ from bs4 import BeautifulSoup
 MAX_PAGE_BYTES = 2_000_000
 REQUEST_TIMEOUT_SECONDS = 12
 ALLOWED_UNITS = {"g", "kg", "ml", "l", "unit", "units", "pc", "pcs", "piece", "pieces"}
+STORE_URLS = {
+    "Barbora": "https://barbora.lt",
+    "Rimi": "https://www.rimi.lt/e-parduotuve",
+    "IKI": "https://www.lastmile.lt/chain/IKI",
+}
+_STORE_NAMES = {name.casefold(): name for name in STORE_URLS}
+_STORE_NAMES.update({"iki lastmile": "IKI", "lastmile/iki": "IKI", "rimi e-parduotuve": "Rimi"})
+
+
+def _normalize_store(value: Any) -> str:
+    raw = str(value).strip()
+    canonical = _STORE_NAMES.get(raw.casefold())
+    if not canonical:
+        supported = ", ".join(STORE_URLS)
+        raise ValueError(f"Unsupported store '{raw}'. Use one of: {supported}.")
+    return canonical
 
 
 @dataclass(frozen=True)
@@ -91,7 +107,7 @@ def load_product_catalog(data: bytes, filename: str) -> list[CatalogProduct]:
             unit = str(row["unit"]).strip().lower()
             normalized_price, normalized_unit = _comparable(price, quantity, unit)
             products.append(CatalogProduct(
-                store=str(row["store"]).strip(),
+                store=_normalize_store(row["store"]),
                 product=str(row["product"]).strip(),
                 price=price,
                 quantity=quantity,
@@ -132,8 +148,6 @@ def compare_ingredients(ingredients: list[dict[str, Any]], products: list[Catalo
             score = _match_score(ingredient, product.product)
             if score >= 0.25:
                 candidates.append((score, product))
-        # Among plausible products, choose the cheapest comparable price; price per unit families
-        # are not mixed. Prefer stronger lexical matches when the price basis differs.
         best = None
         if candidates:
             best_family = max(candidates, key=lambda pair: pair[0])[1].comparable_unit

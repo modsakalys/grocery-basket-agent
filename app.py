@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import io
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 
 from grocery_agent import (
-    CatalogProduct,
+    STORE_URLS,
     compare_ingredients,
     load_ingredient_sheet,
     load_product_catalog,
@@ -16,12 +15,14 @@ from grocery_agent import (
 
 st.set_page_config(page_title="Grocery Basket Agent", page_icon="🛒", layout="wide")
 st.title("🛒 Grocery Basket Agent")
-st.caption("Turn recipes or an ingredient sheet into a price-compared basket. You stay in control; this app never places an order.")
+st.caption("Compare Barbora, Rimi, and IKI for your recipe or ingredient list. This app prepares a suggestion only; it never places an order.")
 
+st.markdown("**Supported shops:** " + " · ".join(f"[{store}]({url})" for store, url in STORE_URLS.items()))
 with st.expander("How comparison works", expanded=False):
     st.markdown(
-        "Upload a current product catalog from the stores you want to compare. "
+        "Upload a current product catalog from Barbora, Rimi, and/or IKI. "
         "The app matches product names to ingredients and compares normalized price per kg, litre, or unit. "
+        "This prototype does not fetch live product listings or prices from the shops; the comparison uses the catalog you upload. "
         "Recipe quantities are kept as written and may need your review. Availability, delivery fees, promotions, "
         "and substitutions must be checked with the retailer."
     )
@@ -30,7 +31,8 @@ st.header("1. Add your shopping needs")
 recipe_text = st.text_area("Recipe URLs (one per line)", placeholder="https://example.com/recipe\nhttps://example.com/another-recipe")
 ingredient_file = st.file_uploader("Or upload an ingredient Excel/CSV sheet", type=["xlsx", "xls", "csv"], key="ingredients")
 
-st.header("2. Add a product catalog")
+st.header("2. Add a product catalog from the supported shops")
+st.caption("Use a permitted, current export or enter the product and price data in a CSV/Excel sheet. The file's store values should be Barbora, Rimi, or IKI.")
 catalog_file = st.file_uploader("Upload CSV/Excel with store, product, price, quantity, unit columns", type=["xlsx", "xls", "csv"], key="catalog")
 
 if st.button("Build comparison", type="primary"):
@@ -84,9 +86,9 @@ if "comparison" in st.session_state:
                 "Package": f"{product.quantity:g} {product.unit}" if product else "—",
                 "Price": f"€{product.price:.2f}" if product else "—",
                 "Comparable price": f"€{product.comparable_price:.2f}/{product.comparable_unit}" if product else "—",
-                "Product link": product.url if product and product.url else "",
+                "Product/shop link": (product.url or STORE_URLS.get(product.store, "")) if product else "",
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={"Product link": st.column_config.LinkColumn()})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={"Product/shop link": st.column_config.LinkColumn()})
 
         matched = [item["best_match"] for item in results if item.get("best_match")]
         if matched:
@@ -99,4 +101,4 @@ if "comparison" in st.session_state:
             st.success("Basket review recorded for this session. No order has been placed.")
 
 st.divider()
-st.caption("Local-first prototype • No automatic checkout • Keep retailer price lists current")
+st.caption("Local-first prototype • Barbora, Rimi, IKI • No automatic checkout • Catalog prices are user-supplied")

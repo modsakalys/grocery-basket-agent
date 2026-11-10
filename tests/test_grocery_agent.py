@@ -1,4 +1,4 @@
-from grocery_agent import CatalogProduct, _comparable, compare_ingredients, load_ingredient_sheet, load_product_catalog
+from grocery_agent import CatalogProduct, STORE_URLS, _comparable, compare_ingredients, load_ingredient_sheet, load_product_catalog
 
 
 def test_normalizes_price_per_kg_and_litre():
@@ -16,14 +16,16 @@ def test_selects_lowest_comparable_price_for_matching_name():
 
 
 def test_loads_flat_csv_ingredient_list():
-    rows = load_ingredient_sheet(b"ingredient,quantity,unit\nTomatoes,500,g\n", "list.csv")
+    rows = load_ingredient_sheet(b"ingredient,quantity,unit\\nTomatoes,500,g\\n", "list.csv")
     assert rows[0]["ingredient"] == "Tomatoes"
     assert rows[0]["quantity"] == 500
 
 
-def test_catalog_reader_calculates_unit_price():
+def test_catalog_reader_calculates_unit_price_and_canonicalizes_store():
     products = load_product_catalog(
-        b"store,product,price,quantity,unit\nRimi,Milk,1.5,1,l\n", "catalog.csv"
+        b"store,product,price,quantity,unit\\nIKI LastMile,Milk,1.5,1,l\\n", "catalog.csv"
     )
+    assert products[0].store == "IKI"
     assert products[0].comparable_price == 1.5
     assert products[0].comparable_unit == "l"
+    assert STORE_URLS[products[0].store] == "https://www.lastmile.lt/chain/IKI"
